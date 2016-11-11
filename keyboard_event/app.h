@@ -39,6 +39,9 @@ private:
 
     HWND m_hwnd;
     BOOL m_exit;
+    BOOL m_fullSize;
+    int m_curSizeIndex;
+    RECT m_rect;
 
     int run(void);
     void loadProjectConfig(void);
@@ -60,6 +63,8 @@ private:
     void onViewChangeZoom(int scaleMode);
 
     void onHelpAbout(void);
+
+    void onFullScreen(void);
 
     // windows callback
     static LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam, BOOL *pProcessed);

@@ -62,6 +62,8 @@ QuickXPlayer::QuickXPlayer(void)
 : m_app(NULL)
 , m_hwnd(NULL)
 , m_exit(TRUE)
+, m_fullSize(FALSE)
+, m_curSizeIndex(7)
 {
     INITCOMMONCONTROLSEX InitCtrls;
     InitCtrls.dwSize = sizeof(InitCtrls);
@@ -135,9 +137,25 @@ int QuickXPlayer::run(void)
         SendMessage(hwndConsole, WM_SETICON, ICON_BIG, (LPARAM)icon);
 
         // update menu
-        createViewMenu();
-        updateMenu();
 
+
+        if(m_fullSize){
+            HWND hwnd = eglView->getHWnd();
+            LockWindowUpdate(hwnd);
+            DWORD dwRemove = WS_CAPTION | WS_BORDER | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+            SetMenu(hwnd, NULL);
+            SetWindowLong(hwnd, GWL_STYLE, WS_POPUP&~dwRemove);
+            LockWindowUpdate(NULL);
+            HDC hDC = GetWindowDC(NULL);
+            SetWindowPos(hwnd, HWND_TOP, 0, 0, GetDeviceCaps(hDC, HORZRES), GetDeviceCaps(hDC, VERTRES), SWP_FRAMECHANGED);
+            // DestroyMenu(GetMenu(hwnd));
+        }
+        else
+        {  
+            createViewMenu();
+            updateMenu();
+        }
+            
         // run game
         CCLuaStack *stack = CCLuaEngine::defaultEngine()->getLuaStack();
         const vector<string> arr = m_project.getPackagePathArray();
@@ -332,7 +350,7 @@ void QuickXPlayer::onFileExit(void)
 void QuickXPlayer::onViewChangeFrameSize(int viewMenuID)
 {
     int index = viewMenuID - ID_VIEW_SIZE;
-
+    m_curSizeIndex = index;
     if (index >= 0 && index < SimulatorConfig::sharedDefaults()->getScreenSizeCount())
     {
         SimulatorScreenSize size = SimulatorConfig::sharedDefaults()->getScreenSize(index);
@@ -387,6 +405,53 @@ void QuickXPlayer::onViewChangeZoom(int scaleMode)
 void QuickXPlayer::onHelpAbout(void)
 {
     DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_ABOUTBOX), m_hwnd, AboutDialogCallback);
+}
+
+void QuickXPlayer::onFullScreen(void)
+{
+    if(!m_fullSize)
+    {
+        m_fullSize = TRUE;
+        GetWindowRect(m_hwnd, &m_rect);
+
+        WINDOWPLACEMENT g_wpPrev = { sizeof(g_wpPrev) };
+        MONITORINFO mi = { sizeof(mi) };
+        DWORD dwStyle = GetWindowLong(m_hwnd, GWL_STYLE);
+        GetWindowPlacement(m_hwnd, &g_wpPrev);
+        GetMonitorInfo(MonitorFromWindow(m_hwnd,MONITOR_DEFAULTTOPRIMARY), &mi);
+
+        SimulatorScreenSize size = SimulatorScreenSize("full screen", (int)(mi.rcMonitor.right - mi.rcMonitor.left), (int)(mi.rcMonitor.bottom - mi.rcMonitor.top));
+
+        m_project.setFrameSize(CCSize(size.width, size.height));
+        m_project.changeFrameOrientationToLandscape();
+        m_project.setFrameScale(1.0f);
+
+        // SetWindowPos(m_hwnd, HWND_TOP,
+        //                mi.rcMonitor.left, mi.rcMonitor.top,
+        //                mi.rcMonitor.right - mi.rcMonitor.left,
+        //                mi.rcMonitor.bottom - mi.rcMonitor.top,
+        //                SWP_NOCOPYBITS | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED);
+        relaunch();
+    }
+    else
+    {
+        m_fullSize = FALSE;
+        SimulatorScreenSize size = SimulatorConfig::sharedDefaults()->getScreenSize(m_curSizeIndex);
+        bool isLandscape = m_project.isLandscapeFrame();
+        m_project.setFrameSize(CCSize(size.width, size.height));
+        if (isLandscape)
+        {
+            m_project.changeFrameOrientationToLandscape();
+        }
+        else
+        {
+            m_project.changeFrameOrientationToPortait();
+        }
+        m_project.setFrameScale(1.0f);
+        SetWindowLong(m_hwnd, GWL_STYLE, WS_CAPTION | WS_POPUPWINDOW | WS_MINIMIZEBOX);
+        m_project.setWindowOffset(CCPoint(m_rect.left, m_rect.top));
+        relaunch();
+    }
 }
 
 // windows callback
@@ -457,6 +522,10 @@ LRESULT QuickXPlayer::WindowProc(UINT message, WPARAM wParam, LPARAM lParam, BOO
         if (wParam == VK_F5)
         {
             host->onFileRelaunch();
+        }
+        if (wParam == VK_F11)
+        {
+            host->onFullScreen();
         }
         LWinProc::execute(message, wParam, lParam);
         break;
